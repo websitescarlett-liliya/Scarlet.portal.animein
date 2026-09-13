@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================
+// USER & AUTH
+// ==========================
+
+enum Role {
+  USER
+  EDITOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+}
+
+model User {
+  id            String     @id @default(cuid())
+  username      String     @unique
+  email         String     @unique
+  passwordHash  String
+  avatarUrl     String?
+  role          Role       @default(USER)
+  status        UserStatus @default(ACTIVE)
+  bookmarks     Bookmark[]
+  watchHistory  WatchHistory[]
+  comments      Comment[]
+  reactions     Reaction[]
+  errorReports  ErrorReport[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// ==========================
+// ANIME CORE
+// ==========================
+
+enum AnimeStatus {
+  ONGOING
+  COMPLETED
+  UPCOMING
+}
+
+model Anime {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  titleAlt    String?
+  synopsis    String   @db.Text
+  posterUrl   String?
+  bannerUrl   String?
+  trailerYoutubeId String?
+  status      AnimeStatus @default(ONGOING)
+  score       Float?   @default(0)
+  season      String?  // e.g. "Winter 2026"
+  year        Int?
+  totalEpisodes Int?
+
+  genres      GenreOnAnime[]
+  studios     StudioOnAnime[]
+  staff       StaffOnAnime[]
+  episodes    Episode[]
+  bookmarks   Bookmark[]
+  comments    Comment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([year, season])
+}
+
+model Genre {
+  id     String @id @default(cuid())
+  slug   String @unique
+  name   String
+  animes GenreOnAnime[]
+}
+
+model GenreOnAnime {
+  anime   Anime  @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId String
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+  genreId String
+  @@id([animeId, genreId])
+}
+
+model Studio {
+  id     String @id @default(cuid())
+  slug   String @unique
+  name   String
+  logoUrl String?
+  animes StudioOnAnime[]
+}
+
+model StudioOnAnime {
+  anime    Anime  @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId  String
+  studio   Studio @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  studioId String
+  @@id([animeId, studioId])
+}
+
+model Staff {
+  id       String @id @default(cuid())
+  name     String
+  role     String // Director, Voice Actor, dll
+  photoUrl String?
+  animes   StaffOnAnime[]
+}
+
+model StaffOnAnime {
+  anime   Anime  @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId String
+  staff   Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staffId String
+  roleNote String?
+  @@id([animeId, staffId])
+}
+
+// ==========================
+// EPISODE & SERVER LINK
+// ==========================
+
+model Episode {
+  id            String   @id @default(cuid())
+  anime         Anime    @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId       String
+  number        Float    // support 7.5 untuk OVA/special
+  title         String?
+  thumbnailUrl  String?
+  subtitleVttUrl String?
+  skipIntroStart Int?    // detik
+  skipIntroEnd   Int?
+  skipOutroStart Int?
+  releaseDate   DateTime?
+
+  servers       EpisodeServer[]
+  comments      Comment[]
+  watchHistory  WatchHistory[]
+  errorReports  ErrorReport[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([animeId, number])
+}
+
+enum VideoQuality {
+  P360
+  P480
+  P720
+  P1080
+  P4K
+}
+
+model EpisodeServer {
+  id         String   @id @default(cuid())
+  episode    Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episodeId  String
+  serverName String   // "Server A - GDrive", "Server B - Local", dst
+  quality    VideoQuality
+  url        String   // path lokal (/media/...) atau URL HLS eksternal self-hosted
+  isHls      Boolean  @default(false)
+  order      Int      @default(0)
+}
+
+// ==========================
+// USER INTERACTION
+// ==========================
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  anime     Anime    @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId   String
+  createdAt DateTime @default(now())
+  @@unique([userId, animeId])
+}
+
+model WatchHistory {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  episode      Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episodeId    String
+  progressSeconds Int   @default(0)
+  completed    Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+  @@unique([userId, episodeId])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  anime      Anime?   @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  animeId    String?
+  episode    Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episodeId  String?
+  parentId   String?
+  content    String   @db.Text
+  isSpoiler  Boolean  @default(false)
+  reactions  Reaction[]
+  createdAt  DateTime @default(now())
+}
+
+enum ReactionType {
+  LIKE
+  LOVE
+  LAUGH
+  WOW
+  SAD
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  comment   Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId String
+  type      ReactionType
+  @@unique([userId, commentId])
+}
+
+model ErrorReport {
+  id         String   @id @default(cuid())
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  episode    Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episodeId  String
+  message    String   @db.Text
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ==========================
+// SITE SETTINGS / THEME PANEL
+// ==========================
+
+model SiteSetting {
+  id        String   @id @default("singleton")
+  // General
+  siteName        String  @default("Scarlet Portal.animein")
+  logoUrl         String?
+  faviconUrl      String?
+  description     String?
+  domain          String?
+
+  // Tampilan
+  primaryColorHex String  @default("#E11D48") // salah satu dari 50 preset
+  bgType          String  @default("none")     // none | image | video
+  bgUrl           String?
+  bgMode          String  @default("cover")    // repeat | cover | fixed | blur
+  themeMode       String  @default("dark")     // dark | light | auto
+  containerWidth  String  @default("1280px")
+  cardRadius      String  @default("0.75rem")
+  animationsOn    Boolean @default(true)
+
+  // Player
+  defaultServer   String?
+  autoplay        Boolean @default(true)
+  skipIntroSeconds Int    @default(85)
+
+  // Fitur toggle
+  commentsEnabled Boolean @default(true)
+  bookmarkEnabled Boolean @default(true)
+  scheduleEnabled Boolean @default(true)
+
+  // SEO
+  metaTitle       String?
+  metaDescription String?
+  gaId            String?
+
+  updatedAt DateTime @updatedAt
+}

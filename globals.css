@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #e11d48; /* fallback default, dioverride via inline <style> di layout.tsx */
+  --container-width: 1280px;
+  --card-radius: 0.75rem;
+}
+
+.dark {
+  --bg: #0b0b0f;
+  --fg: #f4f4f5;
+}
+
+html:not(.dark) {
+  --bg: #ffffff;
+  --fg: #18181b;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+/* Semua elemen interaktif mengikuti warna primary dari Panel Tema */
+.btn-primary {
+  background-color: var(--primary);
+  color: white;
+  border-radius: var(--card-radius);
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+.link-primary {
+  color: var(--primary);
+}
+.card {
+  border-radius: var(--card-radius);
+}
+
+.motion-reduce * {
+  animation: none !important;
+  transition: none !important;
+}
